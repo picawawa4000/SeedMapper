@@ -139,7 +139,7 @@
   "seedMap.lootSearch.foundTypes": "Found %d item types.",
   "seedMap.lootSearch.sort": "Sort: %s",
   "seedMap.lootSearch.sort.count": "Count",
-  "seedMap.lootSearch.sort.distance": "Distance"
+  "seedMap.lootSearch.sort.distance": "Distance",
 
   "seedMap.clickToCopy": "Click to copy"
 }

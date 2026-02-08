@@ -1,0 +1,5 @@
+./jextract/build/jextract/bin/jextract --include-dir src/main/c/cubiomes --output src/main/java --use-system-load-library --target-package com.github.cubiomes --header-class-name Cubiomes @src/main/c/cubiomes/includes.txt biomenoise.h biomes.h finders.h generator.h layers.h biomenoise.h biomes.h noise.h terrainnoise.h rng.h util.h quadbase.h xrms.h loot/items.h loot/logging.h loot/loot_functions.h loot/loot_table_context.h loot/loot_table_parser.h loot/loot_tables.h loot/mc_loot.h 
+warning: no library specified using -l but --use-system-load-library was used
+_stdlib.h:147:25: warning: pointer is missing a nullability type specifier (_Nonnull, _Nullable, or _Null_unspecified)
+[~300 similar messages]
+fatal: Unexpected exception org.openjdk.jextract.clang.TypeLayoutError: InvalidFieldName. segment: org.openjdk.jextract.clang.Type@25a76428, fieldName: struct (anonymous at src/main/c/cubiomes/generator.h:24:9) occurred

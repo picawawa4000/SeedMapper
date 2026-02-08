@@ -431,9 +431,14 @@ public class LootSearchScreen extends Screen {
                                 Cubiomes.set_loot_seed(lootTableContext, lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, chestIdx));
                                 Cubiomes.generate_loot(lootTableContext);
                                 int lootCount = LootTableContext.generated_item_count(lootTableContext);
+                                lootCount = Mth.clamp(lootCount, 0, 27);
                                 for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
-                                    MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
-                                    int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
+                                    MemorySegment itemStackInternal = LootTableContext.generated_items(lootTableContext, lootIdx);
+                                    int rawItemId = ItemStack.item(itemStackInternal);
+                                    int itemId = Cubiomes.get_global_item_id(lootTableContext, rawItemId);
+                                    if (itemId < 0 && rawItemId >= 0 && rawItemId < Cubiomes.NUM_ITEMS()) {
+                                        itemId = rawItemId;
+                                    }
                                     int count = ItemStack.count(itemStackInternal);
                                     results.addItem(itemId, count, new BlockPos(posX, 0, posZ), structure);
                                 }

@@ -90,13 +90,18 @@ public class DensityFunctionArgument implements ArgumentType<DensityFunctionArgu
     private static double computeSlopedCheese(MemorySegment params, int x, int y, int z) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment np_param = arena.allocate(Cubiomes.C_FLOAT, 4);
-            Cubiomes.sampleNoiseParameters(Generator.bn(TerrainNoise.g(params)), x >> 2, z >> 2, np_param);
-            double depth = Cubiomes.getSpline(BiomeNoise.sp(Generator.bn(TerrainNoise.g(params))), np_param) - 0.50375f;
+            MemorySegment biomeNoise = generatorBiomeNoise(TerrainNoise.g(params));
+            Cubiomes.sampleNoiseParameters(biomeNoise, x >> 2, z >> 2, np_param);
+            double depth = Cubiomes.getSpline(BiomeNoise.sp(biomeNoise), np_param) - 0.50375f;
             double factor = Cubiomes.getSpline(TerrainNoise.factorSpline(params), np_param);
             double jagged = Cubiomes.sampleDoublePerlin(TerrainNoise.noises(params).asSlice(Cubiomes.OTP_JAGGED() * DoublePerlinNoise.sizeof()), x * 1500.0, 0, z * 1500.0);
             jagged = jagged >= 0.0 ? jagged : jagged / 2.0;
             jagged *= Cubiomes.getSpline(TerrainNoise.jaggednessSpline(params), np_param);
             return Cubiomes.sampleSlopedCheese(params, x, y, z, depth, factor, jagged);
         }
+    }
+
+    private static MemorySegment generatorBiomeNoise(MemorySegment generator) {
+        return generator.asSlice(Generator.bn$offset(), BiomeNoise.layout().byteSize());
     }
 }

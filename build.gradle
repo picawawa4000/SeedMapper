@@ -1,4 +1,5 @@
 import net.fabricmc.loom.task.prod.ClientProductionRunTask
+import dev.xpple.seedmapper.buildscript.CreateJavaBindingsTask
 
 plugins {
 	id 'fabric-loom' version "${fabric_loom_version}"
@@ -67,15 +68,15 @@ dependencies {
 }
 
 clean {
-    //delete fileTree("${projectDir}/src/main/java/com/github/cubiomes") {
-    //    exclude '.gitkeep'
-    //}
+    delete fileTree("${projectDir}/src/main/java/com/github/cubiomes") {
+        exclude '.gitkeep'
+    }
 }
 
-//tasks.register('createJavaBindings', CreateJavaBindingsTask) {}
-// compileJava.dependsOn('createJavaBindings')
+tasks.register('createJavaBindings', CreateJavaBindingsTask) {}
+//compileJava.dependsOn('createJavaBindings')
 
-//createJavaBindings.dependsOn(clean)
+createJavaBindings.dependsOn(clean)
 
 //tasks.register('generateBuildInfo', GenerateBuildInfoTask) {
 //	outputFile = new File(temporaryDir, "build_info.json")

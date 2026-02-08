@@ -20,6 +20,7 @@ import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.logging.LogUtils;
 
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.CanyonCarverArgument;
@@ -93,6 +94,7 @@ import net.minecraft.world.phys.Vec2;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
+import org.slf4j.Logger;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
@@ -256,7 +258,10 @@ public class SeedMapScreen extends Screen {
     private static final Identifier DIRECTION_ARROW_TEXTURE = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/gui/arrow.png");
 
     private Registry<Enchantment> enchantmentsRegistry;
+    private @Nullable Boolean mobEffectsAvailable = null;
     private Registry<net.minecraft.world.effect.MobEffect> mobEffectRegistry;
+
+    private static final Logger logger = LogUtils.getLogger();
 
     public SeedMapScreen(long seed, int dimension, int version, int generatorFlags, BlockPos playerPos, Vec2 playerRotation) {
         super(Component.empty());
@@ -1219,11 +1224,20 @@ public class SeedMapScreen extends Screen {
                     Cubiomes.set_loot_seed(lootTableContext, lootSeed);
                     Cubiomes.generate_loot(lootTableContext);
                     int lootCount = LootTableContext.generated_item_count(lootTableContext);
+                    this.logLootProbe(structure, pieceName, lootTableString, lootCount, lootTableContext);
+                    lootCount = Mth.clamp(lootCount, 0, 27);
                     SimpleContainer container = new SimpleContainer(3 * 9);
                     for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
-                        MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
-                        int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
+                        MemorySegment itemStackInternal = LootTableContext.generated_items(lootTableContext, lootIdx);
+                        int rawItemId = ItemStack.item(itemStackInternal);
+                        int itemId = Cubiomes.get_global_item_id(lootTableContext, rawItemId);
+                        if (itemId < 0 && rawItemId >= 0 && rawItemId < Cubiomes.NUM_ITEMS()) {
+                            itemId = rawItemId;
+                        }
                         Item item = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                        if (item == null) {
+                            continue;
+                        }
                         net.minecraft.world.item.ItemStack itemStack = new net.minecraft.world.item.ItemStack(item, ItemStack.count(itemStackInternal));
                         MemorySegment enchantments = ItemStack.enchantments(itemStackInternal);
                         int enchantmentCount = ItemStack.enchantment_count(itemStackInternal);
@@ -1231,19 +1245,23 @@ public class SeedMapScreen extends Screen {
                             MemorySegment enchantInstance = EnchantInstance.asSlice(enchantments, enchantmentIdx);
                             int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
                             ResourceKey<Enchantment> enchantmentResourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(itemEnchantment);
-                            Holder.Reference<Enchantment> enchantmentReference = this.enchantmentsRegistry.getOrThrow(enchantmentResourceKey);
-                            itemStack.enchant(enchantmentReference, EnchantInstance.level(enchantInstance));
+                            if (enchantmentResourceKey != null && this.enchantmentsRegistry != null) {
+                                this.enchantmentsRegistry.getOptional(enchantmentResourceKey)
+                                    .ifPresent(enchantmentReference -> itemStack.enchant(Holder.direct(enchantmentReference), EnchantInstance.level(enchantInstance)));
+                            }
                         }
-                        MemorySegment mobEffectInstance = ItemStack.mob_effect(itemStackInternal);
-                        if (MobEffectInstance.effect(mobEffectInstance) != -1) {
-                            MemorySegment mobEffectInternal = MobEffect.asSlice(Cubiomes.MOB_EFFECTS(), MobEffectInstance.effect(mobEffectInstance));
-                            var mobEffect = this.mobEffectRegistry.getOptional(Identifier.parse(MobEffect.effect_name(mobEffectInternal).getString(0))).orElse(null);
-                            if (mobEffect != null) {
-                                SuspiciousStewEffects.Entry entry = new SuspiciousStewEffects.Entry(Holder.direct(mobEffect), MobEffectInstance.duration(mobEffectInstance));
-                                net.minecraft.world.effect.MobEffectInstance effectInstance = entry.createEffectInstance();
-                                MutableComponent description = PotionContents.getPotionDescription(effectInstance.getEffect(), effectInstance.getAmplifier());
-                                MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", description, (float) entry.duration() / SharedConstants.TICKS_PER_SECOND);
-                                itemStack.set(DataComponents.LORE, new ItemLore(List.of(lore)));
+                        if (this.isMobEffectsAvailable() && this.mobEffectRegistry != null) {
+                            MemorySegment mobEffectInstance = ItemStack.mob_effect(itemStackInternal);
+                            if (MobEffectInstance.effect(mobEffectInstance) != -1) {
+                                MemorySegment mobEffectInternal = MobEffect.asSlice(Cubiomes.MOB_EFFECTS(), MobEffectInstance.effect(mobEffectInstance));
+                                var mobEffect = this.mobEffectRegistry.getOptional(Identifier.parse(MobEffect.effect_name(mobEffectInternal).getString(0))).orElse(null);
+                                if (mobEffect != null) {
+                                    SuspiciousStewEffects.Entry entry = new SuspiciousStewEffects.Entry(Holder.direct(mobEffect), MobEffectInstance.duration(mobEffectInstance));
+                                    net.minecraft.world.effect.MobEffectInstance effectInstance = entry.createEffectInstance();
+                                    MutableComponent description = PotionContents.getPotionDescription(effectInstance.getEffect(), effectInstance.getAmplifier());
+                                    MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", description, (float) entry.duration() / SharedConstants.TICKS_PER_SECOND);
+                                    itemStack.set(DataComponents.LORE, new ItemLore(List.of(lore)));
+                                }
                             }
                         }
                         container.addItem(itemStack);
@@ -1529,5 +1547,52 @@ public class SeedMapScreen extends Screen {
 
     protected int getGeneratorFlags() {
         return this.generatorFlags;
+    }
+
+    private void logLootProbe(int structure, String pieceName, String lootTable, int lootCount, MemorySegment lootTableContext) {
+        if (!Configs.DevMode) {
+            return;
+        }
+        int clamped = Mth.clamp(lootCount, 0, 27);
+        logger.info("[LootProbe] struct={} piece={} table={} count={} clamped={}", Cubiomes.struct2str(structure).getString(0), pieceName, lootTable, lootCount, clamped);
+        logger.info("[LootProbe] sizes: itemStackSize={} generatedItemsSize={} perItemStride={} generatedItemsOffset={}",
+            ItemStack.layout().byteSize(),
+            LootTableContext.generated_items$layout().byteSize(),
+            LootTableContext.generated_items$layout().byteSize() / 27,
+            LootTableContext.generated_items$offset()
+        );
+        logger.info("[LootProbe] item offsets: item={} count={} enchCount={}",
+            ItemStack.item$offset(),
+            ItemStack.count$offset(),
+            ItemStack.enchantment_count$offset()
+        );
+        int max = Math.min(5, clamped);
+        for (int i = 0; i < max; i++) {
+            MemorySegment itemStackInternal = LootTableContext.generated_items(lootTableContext, i);
+            int rawItem = ItemStack.item(itemStackInternal);
+            int count = ItemStack.count(itemStackInternal);
+            int ench = ItemStack.enchantment_count(itemStackInternal);
+            int globalId = Cubiomes.get_global_item_id(lootTableContext, rawItem);
+            if (globalId < 0 && rawItem >= 0 && rawItem < Cubiomes.NUM_ITEMS()) {
+                globalId = rawItem;
+            }
+            boolean mapped = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.containsKey(globalId);
+            logger.info("[LootProbe]   idx={} rawItem={} count={} enchCount={} globalId={} mapped={}",
+                i, rawItem, count, ench, globalId, mapped);
+        }
+    }
+
+    private boolean isMobEffectsAvailable() {
+        if (this.mobEffectsAvailable != null) {
+            return this.mobEffectsAvailable;
+        }
+        try {
+            Cubiomes.MOB_EFFECTS();
+            this.mobEffectsAvailable = true;
+        } catch (Throwable _) {
+            this.mobEffectsAvailable = false;
+        }
+        logger.info("MOB_EFFECTS(): {}", this.mobEffectsAvailable);
+        return this.mobEffectsAvailable;
     }
 }
